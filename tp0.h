@@ -23,6 +23,7 @@
 #include <readline/readline.h> // Para usar readline
 #include <commons/log.h>
 #include <commons/collections/list.h>
+#include <commons/string.h>
 
 // Definimos algunas constantes para nuestro código
 #define IP "127.0.0.1"
@@ -54,4 +55,6 @@ void * wait_content(int socket);
 void send_md5(int socket, void * content);
 void wait_confirmation(int socket);
 void exit_gracefully(int return_nr);
+void check_recv_error(int retorno);
+void check_send_error(int result_send);
 #endif /* CLIENTE_H_ */

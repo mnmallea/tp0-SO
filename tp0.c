@@ -1,4 +1,8 @@
 #include "tp0.h"
+#define true 1
+#define false 0
+#define ERROR 1
+#define SUCCESS 0
 
 int main() {
   configure_logger();
@@ -9,7 +13,7 @@ int main() {
   void * content = wait_content(socket);
   send_md5(socket, content);
   wait_confirmation(socket);
-  exit_gracefully(0);
+  exit_gracefully(SUCCESS);
 }
 
 void configure_logger() {
@@ -19,7 +23,7 @@ void configure_logger() {
         mostrarse por pantalla y mostrar solo los logs de nivel info para arriba
         (info, warning y error!)
   */
-  logger = /* 1. */;
+  logger = log_create("tpo.log", "TP0", true, LOG_LEVEL_INFO);
 }
 
 int connect_to_server(char * ip, char * port) {
@@ -33,12 +37,17 @@ int connect_to_server(char * ip, char * port) {
   getaddrinfo(ip, port, &hints, &server_info);  // Carga en server_info los datos de la conexion
 
   // 2. Creemos el socket con el nombre "server_socket" usando la "server_info" que creamos anteriormente
-  int server_socket = /* ?? */;
+  int server_socket = socket(server_info->ai_family, server_info->ai_socktype, server_info->ai_protocol) ;
 
   // 3. Conectemosnos al server a traves del socket! Para eso vamos a usar connect()
-  int retorno = connect(/* ?? */);
+  int retorno = connect(server_socket, server_info->ai_addr, server_info->ai_addrlen);
 
   freeaddrinfo(server_info);  // No lo necesitamos mas
+
+  if(retorno < 0){
+	  log_error(logger,"No se pudo conectar");
+	  exit_gracefully(ERROR);
+  }
 
   /*
     3.1 Recuerden chequear por si no se pudo contectar (usando el retorno de connect()).
@@ -63,14 +72,15 @@ void  wait_hello(int socket) {
         variable "hola". Entonces, vamos por partes:
         5.1.  Reservemos memoria para un buffer para recibir el mensaje.
   */
-  char * buffer = malloc(/*5.1*/);
+  int buffer_size = strlen(hola) + 1;
+  char * buffer = malloc(buffer_size);
   /*
         5.2.  Recibamos el mensaje en el buffer.
         Recuerden el prototipo de recv:
         conexión - donde guardar - cant de bytes - flags(si no se pasa ninguno puede ir NULL)
         Nota: Palabra clave MSG_WAITALL.
   */
-  int result_recv = recv(/*5.2*/);
+  int result_recv = recv(socket,buffer,buffer_size,MSG_WAITALL);
   /*
         5.3.  Chequiemos errores al recibir! (y logiemos, por supuesto)
         5.4.  Comparemos lo recibido con "hola".
@@ -78,7 +88,14 @@ void  wait_hello(int socket) {
         No se olviden de loggear y devolver la memoria que pedimos!
         (si, también si falló algo, tenemos que devolverla, atenti.)
   */
+  check_recv_error(result_recv);
 
+  if(!strcmp(hola,buffer))
+	  log_info(logger, "Mensaje correctamente recibido!! : %s",buffer);
+  else
+	  log_warning(logger, "Mensaje fue distinto del esperado :(");
+
+  free(buffer);
 }
 
 Alumno read_hello() {
@@ -118,18 +135,22 @@ Alumno read_hello() {
           copiarlos usando memcpy a la estructura y liberar la memoria
           pedida por readline.
   */
-  char * nombre = /* ??? */;
+  char * nombre = readline("Nombre: ");
+  memcpy(alumno.nombre, nombre, strlen(alumno.nombre)+1);
+  free(nombre);
   // Usemos memcpy(destino, origen, cant de bytes).
   // Para la cant de bytes nos conviene usar strlen dado que son cadenas
   // de caracteres que cumplen el formato de C (terminar en \0)
 
   // 9.1. Faltaría armar el del apellido
-
+  char *apellido = readline("Apellido: ");
+  memcpy(alumno.apellido, apellido, strlen(alumno.apellido)+1);
+  free(apellido);
   // 10. Finalmente retornamos la estructura
   return alumno;
 }
 
-void send_hello(int socket) {
+void send_hello(int socket, Alumno alumno) {
   log_info(logger, "Enviando info de Estudiante");
   /*
     11.   Ahora SI nos toca mandar el hola con los datos del alumno.
@@ -137,6 +158,7 @@ void send_hello(int socket) {
           Segun definimos, el tipo de id para un mensaje de tamaño fijo con
           la informacion del alumno es el id 99
   */
+  alumno.id_mensaje = 99;
 
   /*
     11.1. Como algo extra, podes probar enviando caracteres invalidos en el nombre
@@ -153,8 +175,9 @@ void send_hello(int socket) {
           por lo que no tiene padding y la podemos mandar directamente sin necesidad
           de un buffer y usando el tamaño del tipo Alumno!
   */
-  int resultado = (send(/* ?? */, &alumno, /* ??? */, 0);
+  int resultado = send(socket, &alumno, sizeof(alumno), 0);
 
+  check_send_error(resultado);
   /*
     12.1. Recuerden que al salir tenemos que cerrar el socket (ademas de loggear)!
   */
@@ -167,13 +190,24 @@ void * wait_content(int socket) {
           respuesta de contenido variable (18) y despues junto con el id de operacion
           vamos a haber recibido el tamaño del contenido que sigue. Por lo que:
   */
-
+	/* ??? */
   log_info(logger, "Esperando el encabezado del contenido(%ld bytes)", sizeof(ContentHeader));
-  // 13.1. Reservamos el suficiente espacio para guardar un ContentHeader
-  ContentHeader * header = { /* 8.1. */ };
+  // 13.1. /* ??? */Reservamos el suficiente espacio para guardar un ContentHeader
+  //ContentHeader * header = { /* 8.1. */ };
+  ContentHeader *header = malloc(sizeof(ContentHeader));
+
+  int retorno = recv(socket, header, sizeof(ContentHeader),0);
 
   // 13.2. Recibamos el header en la estructura y chequiemos si el id es el correcto.
   //      No se olviden de validar los errores, liberando memoria y cerrando el socket!
+
+  check_recv_error(retorno);
+  if(header->id == 0)
+	  log_info(logger,"Id correcto recibido");
+  else{
+	  log_error(logger, "Id incorrecto recibido");
+	  exit_gracefully(ERROR);
+  }
 
   log_info(logger, "Esperando el contenido (%d bytes)", header->len);
 
@@ -183,11 +217,17 @@ void * wait_content(int socket) {
       14.1. Reservamos memoria
       14.2. Recibimos el contenido en un buffer (si hubo error, fallamos, liberamos y salimos
   */
+  void *buffer = malloc(header->len + 1);
+  retorno = recv(socket, buffer, sizeof(header->len),0);
+  check_recv_error(retorno);
+  string_append(buffer,"\0");
 
   /*
       15.   Finalmente, no te olvides de liberar la memoria que pedimos
             para el header y retornar el contenido recibido.
   */
+  free(header);
+  return buffer;
 }
 
 void send_md5(int socket, void * content) {
@@ -213,18 +253,28 @@ void send_md5(int socket, void * content) {
 
   //      17.1. Creamos un ContentHeader para guardar un mensaje de id 33 y el tamaño del md5
 
-  ContentHeader header = { /* 17.1. */ };
+  ContentHeader header = { .id = 33, .len = sizeof(*digest)};
 
   /*
           17.2. Creamos un buffer del tamaño del mensaje completo y copiamos el header y la info de "digest" allí.
           Recuerden revisar la función memcpy(ptr_destino, ptr_origen, tamaño)!
   */
+  int msg_size = sizeof(ContentHeader) + MD5_DIGEST_LENGTH;
+  void *buffer = malloc(msg_size);
+  memcpy(buffer, &header, sizeof(header));
+  memcpy(buffer + sizeof(header), digest, MD5_DIGEST_LENGTH);
 
   /*
     18.   Con todo listo, solo nos falta enviar el paquete que armamos y liberar la memoria que usamos.
           Si, TODA la que usamos, eso incluye a la del contenido del mensaje que recibimos en la función
           anterior y el digest del MD5. Obviamente, validando tambien los errores.
   */
+  log_info(logger, "Enviando MD5");
+  int send_retorno = send(socket,buffer,sizeof(*buffer),0);
+  check_send_error(send_retorno);
+
+  free(digest);
+  free(buffer);
 }
 
 void wait_confirmation(int socket) {
@@ -233,7 +283,8 @@ void wait_confirmation(int socket) {
     19.   Ahora nos toca recibir la confirmacion del servidor.
           Si el resultado obvenido es distinto de 0, entonces hubo un error
   */
-
+  int retorno = recv(socket,&result,sizeof(result),0);
+  check_recv_error(retorno);
   log_info(logger, "Los MD5 concidieron!");
 }
 
@@ -243,4 +294,26 @@ void exit_gracefully(int return_nr) {
           Asi solo necesitamos destruir el logger y usar la llamada al
           sistema exit() para terminar la ejecucion
   */
+	log_destroy(logger);
+	exit(return_nr);
+}
+
+void check_recv_error(int result_recv){
+	if(result_recv <= 0){
+		  switch(result_recv){
+		  case 0:
+			  log_error(logger, "La conexión se ha cerrado");
+			  break;
+		  default:
+			  log_error(logger, "No se ha podido recibir");
+		  }
+		  exit_gracefully(ERROR);
+	  }
+}
+
+void check_send_error(int result_send){
+	if(result_send < 0){
+		  log_error(logger, "Error al enviar");
+		  exit_gracefully(ERROR);
+	}
 }
