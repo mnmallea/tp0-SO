@@ -1,3 +1,7 @@
 *.log
 *.o
 *.txt
+.cproject
+.project
+.settings/
+tp0
