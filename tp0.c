@@ -45,8 +45,7 @@ int connect_to_server(char * ip, char * port) {
   freeaddrinfo(server_info);  // No lo necesitamos mas
 
   if(retorno < 0){
-	  log_error(logger,"No se pudo conectar");
-	  exit_gracefully(ERROR);
+	  exit_error(server_socket, NULL,"No se pudo conectar");
   }
 
   /*
@@ -80,7 +79,7 @@ void  wait_hello(int socket) {
         conexión - donde guardar - cant de bytes - flags(si no se pasa ninguno puede ir NULL)
         Nota: Palabra clave MSG_WAITALL.
   */
-  int result_recv = recv(socket,buffer,buffer_size,MSG_WAITALL);
+  int result_recv = recv(socket,buffer,buffer_size,/*MSG_WAITALL*/0);
   /*
         5.3.  Chequiemos errores al recibir! (y logiemos, por supuesto)
         5.4.  Comparemos lo recibido con "hola".
@@ -88,7 +87,7 @@ void  wait_hello(int socket) {
         No se olviden de loggear y devolver la memoria que pedimos!
         (si, también si falló algo, tenemos que devolverla, atenti.)
   */
-  check_recv_error(result_recv);
+  check_recv_error(result_recv, socket, buffer);
 
   if(!strcmp(hola,buffer))
 	  log_info(logger, "Mensaje correctamente recibido!! : %s",buffer);
@@ -177,7 +176,7 @@ void send_hello(int socket, Alumno alumno) {
   */
   int resultado = send(socket, &alumno, sizeof(alumno), 0);
 
-  check_send_error(resultado);
+  check_send_error(resultado, socket, NULL);
   /*
     12.1. Recuerden que al salir tenemos que cerrar el socket (ademas de loggear)!
   */
@@ -201,12 +200,11 @@ void * wait_content(int socket) {
   // 13.2. Recibamos el header en la estructura y chequiemos si el id es el correcto.
   //      No se olviden de validar los errores, liberando memoria y cerrando el socket!
 
-  check_recv_error(retorno);
-  if(header->id == 0)
+  check_recv_error(retorno, socket, header);
+  if(header->id ==18)
 	  log_info(logger,"Id correcto recibido");
   else{
-	  log_error(logger, "Id incorrecto recibido");
-	  exit_gracefully(ERROR);
+	  exit_error(socket, header ,"Id incorrecto recibido");
   }
 
   log_info(logger, "Esperando el contenido (%d bytes)", header->len);
@@ -219,8 +217,8 @@ void * wait_content(int socket) {
   */
   void *buffer = malloc(header->len + 1);
   retorno = recv(socket, buffer, sizeof(header->len),0);
-  check_recv_error(retorno);
-  string_append(buffer,"\0");
+  check_recv_error(retorno, socket, buffer);
+//  string_append(buffer,"\0");
 
   /*
       15.   Finalmente, no te olvides de liberar la memoria que pedimos
@@ -271,7 +269,7 @@ void send_md5(int socket, void * content) {
   */
   log_info(logger, "Enviando MD5");
   int send_retorno = send(socket,buffer,sizeof(*buffer),0);
-  check_send_error(send_retorno);
+  check_send_error(send_retorno, socket, buffer);
 
   free(digest);
   free(buffer);
@@ -284,7 +282,7 @@ void wait_confirmation(int socket) {
           Si el resultado obvenido es distinto de 0, entonces hubo un error
   */
   int retorno = recv(socket,&result,sizeof(result),0);
-  check_recv_error(retorno);
+  check_recv_error(retorno, socket, NULL);
   log_info(logger, "Los MD5 concidieron!");
 }
 
@@ -298,22 +296,26 @@ void exit_gracefully(int return_nr) {
 	exit(return_nr);
 }
 
-void check_recv_error(int result_recv){
-	if(result_recv <= 0){
-		  switch(result_recv){
+void check_recv_error(int result_recv, int socket, void* buffer){
+	switch(result_recv){
 		  case 0:
-			  log_error(logger, "La conexión se ha cerrado");
+			  exit_error(socket, buffer, "La conexion se ha cerrado");
 			  break;
-		  default:
-			  log_error(logger, "No se ha podido recibir");
-		  }
-		  exit_gracefully(ERROR);
-	  }
+		  case -1:
+			  exit_error(socket, buffer, "No se ha podido recibir");
+	}
 }
 
-void check_send_error(int result_send){
+void check_send_error(int result_send, int socket, void* buffer){
 	if(result_send < 0){
-		  log_error(logger, "Error al enviar");
-		  exit_gracefully(ERROR);
+		exit_error(socket,buffer,"Error al enviar");
 	}
+}
+
+void exit_error(int socket,void *buffer, char  *error_msg){
+	if(buffer!=NULL)
+		free(buffer);
+	close(socket);
+	log_error(logger,error_msg);
+	exit_gracefully(ERROR);
 }

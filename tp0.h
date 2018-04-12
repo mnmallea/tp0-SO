@@ -26,7 +26,7 @@
 #include <commons/string.h>
 
 // Definimos algunas constantes para nuestro código
-#define IP "127.0.0.1"
+#define IP "tp0.utnso.com"//"127.0.0.1"
 #define PUERTO "8080"
 
 // Definimos algunas variables globales
@@ -55,6 +55,7 @@ void * wait_content(int socket);
 void send_md5(int socket, void * content);
 void wait_confirmation(int socket);
 void exit_gracefully(int return_nr);
-void check_recv_error(int retorno);
-void check_send_error(int result_send);
+void check_recv_error(int result_recv, int socket, void* buffer);
+void check_send_error(int result_send, int socket, void* buffer);
+void exit_error(int socket,void *buffer, char  *error_msg);
 #endif /* CLIENTE_H_ */
