@@ -71,15 +71,14 @@ void  wait_hello(int socket) {
         variable "hola". Entonces, vamos por partes:
         5.1.  Reservemos memoria para un buffer para recibir el mensaje.
   */
-  int buffer_size = strlen(hola) + 1;
-  char * buffer = malloc(buffer_size);
+  char * buffer = calloc(sizeof(char),strlen(hola) + 1);
   /*
         5.2.  Recibamos el mensaje en el buffer.
         Recuerden el prototipo de recv:
         conexión - donde guardar - cant de bytes - flags(si no se pasa ninguno puede ir NULL)
         Nota: Palabra clave MSG_WAITALL.
   */
-  int result_recv = recv(socket,buffer,buffer_size,/*MSG_WAITALL*/0);
+  int result_recv = recv(socket,buffer,strlen(hola),MSG_WAITALL);
   /*
         5.3.  Chequiemos errores al recibir! (y logiemos, por supuesto)
         5.4.  Comparemos lo recibido con "hola".
@@ -89,11 +88,10 @@ void  wait_hello(int socket) {
   */
   check_recv_error(result_recv, socket, buffer);
 
-  if(!strcmp(hola,buffer))
-	  log_info(logger, "Mensaje correctamente recibido!! : %s",buffer);
-  else
-	  log_warning(logger, "Mensaje fue distinto del esperado :(");
+  if(strcmp(hola,buffer)!= 0)
+	  exit_error(socket, buffer, "Mensaje fue distinto del esperado :(");
 
+  log_info(logger, "Mensaje correctamente recibido!! : %s",buffer);
   free(buffer);
 }
 
@@ -202,7 +200,7 @@ void * wait_content(int socket) {
 
   check_recv_error(retorno, socket, header);
   if(header->id ==18)
-	  log_info(logger,"Id correcto recibido");
+	  log_info(logger,"Id correcto recibido: %d",header->id);
   else{
 	  exit_error(socket, header ,"Id incorrecto recibido");
   }
@@ -215,8 +213,8 @@ void * wait_content(int socket) {
       14.1. Reservamos memoria
       14.2. Recibimos el contenido en un buffer (si hubo error, fallamos, liberamos y salimos
   */
-  void *buffer = malloc(header->len + 1);
-  retorno = recv(socket, buffer, sizeof(header->len),0);
+  void *buffer = calloc(sizeof(char), header->len + 1);
+  retorno = recv(socket, buffer, header->len, MSG_WAITALL);
   check_recv_error(retorno, socket, buffer);
 //  string_append(buffer,"\0");
 
@@ -224,6 +222,7 @@ void * wait_content(int socket) {
       15.   Finalmente, no te olvides de liberar la memoria que pedimos
             para el header y retornar el contenido recibido.
   */
+  log_info(logger, "Contenido recibido: '%s'",buffer);
   free(header);
   return buffer;
 }
@@ -268,7 +267,7 @@ void send_md5(int socket, void * content) {
           anterior y el digest del MD5. Obviamente, validando tambien los errores.
   */
   log_info(logger, "Enviando MD5");
-  int send_retorno = send(socket,buffer,sizeof(*buffer),0);
+  int send_retorno = send(socket, buffer, msg_size,0);
   check_send_error(send_retorno, socket, buffer);
 
   free(digest);
@@ -281,8 +280,13 @@ void wait_confirmation(int socket) {
     19.   Ahora nos toca recibir la confirmacion del servidor.
           Si el resultado obvenido es distinto de 0, entonces hubo un error
   */
+  log_info(logger, "Esperando confirmacion");
   int retorno = recv(socket,&result,sizeof(result),0);
   check_recv_error(retorno, socket, NULL);
+
+  if(result != 1)
+	  exit_error(socket,NULL,"Los md5 no coincidieron");
+
   log_info(logger, "Los MD5 concidieron!");
 }
 
